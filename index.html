@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Google Maps Heatmap with Enhanced Controls and Stats</title>
+<title>Google Maps Heatmap - Responsive Design</title>
 <style>
+/* --- Base Styles (Apply to all screen sizes, or primarily desktop) --- */
+
 /* Basic styling for the map container */
 #map {
 height: 80vh; /* Use 80% of viewport height */
@@ -57,6 +59,7 @@ box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
 z-index: 1000; /* Ensure it's above the map */
 display: none; /* Hidden by default */
 font-size: 0.9rem;
+/* Desktop positioning is handled by JS (event.domEvent.clientX/Y) */
 }
 
 /* Styling for the postcode stats pop-up box */
@@ -70,13 +73,16 @@ box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
 z-index: 1000; /* Ensure it's above the map */
 display: none; /* Hidden by default */
 font-size: 0.9rem;
+/* Desktop positioning is handled by JS (relative to input) */
 }
 
-#postcode-stats-box div {
+#postcode-stats-box div,
+#crime-info-box div { /* Apply margin to divs inside both popups */
 margin-bottom: 5px;
 }
 
-#postcode-stats-box strong {
+#postcode-stats-box strong,
+#crime-info-box strong { /* Apply strong color to both popups */
 color: #333;
 }
 
@@ -158,6 +164,71 @@ padding: 0;
 font-family: sans-serif; /* Use a common font */
 overflow-x: hidden; /* Prevent horizontal scroll */
 }
+
+
+/* --- Mobile Styles (Apply when screen width is 600px or less) --- */
+@media (max-width: 600px) {
+
+    /* Adjust controls layout for stacking */
+    #controls {
+        flex-direction: column; /* Stack items vertically */
+        align-items: stretch; /* Make items fill the width */
+        padding: 8px; /* Adjust padding */
+        gap: 8px; /* Adjust gap */
+    }
+
+    #controls label,
+    #controls select,
+    #controls input[type="text"],
+    #controls input[type="number"],
+    #controls button {
+        width: 100%; /* Make controls full width */
+        box-sizing: border-box; /* Include padding and border in element's total width */
+        font-size: 1rem; /* Slightly larger font for readability */
+        padding: 10px; /* More padding for touch targets */
+    }
+
+    /* Adjust map height to leave more space for controls/stats */
+    #map {
+       height: 60vh; /* Example: reduce map height on mobile */
+    }
+
+    /* Adjust stats box font size and padding */
+    #stats-box {
+        font-size: 0.85rem;
+        padding: 8px;
+    }
+
+    /* Adjust pop-up boxes position and size for mobile */
+    #crime-info-box,
+    #postcode-stats-box {
+        position: fixed; /* Use fixed positioning relative to viewport */
+        top: auto !important; /* Override any inline 'top' set by JS */
+        bottom: 10px; /* Position from the bottom */
+        left: 10px !important; /* Override any inline 'left' set by JS */
+        right: 10px; /* Position from the right */
+        width: auto; /* Allow width to be determined by left/right */
+        max-width: calc(100% - 20px); /* Ensure max width fits within screen */
+        font-size: 1rem; /* Larger font for readability */
+        padding: 15px; /* More padding */
+        box-sizing: border-box; /* Include padding and border in total size */
+    }
+
+    /* Adjust legend position and size for mobile */
+    #legend {
+        bottom: 10px; /* Position from the bottom */
+        left: 10px; /* Position from the left */
+        font-size: 0.7rem; /* Smaller font */
+        padding: 8px;
+        /* You might need to adjust this further if it overlaps popups */
+        /* Maybe hide it on very small screens? display: none; */
+    }
+
+    #legend h4 {
+        font-size: 0.9rem;
+    }
+}
+
 </style>
 </head>
 <body>

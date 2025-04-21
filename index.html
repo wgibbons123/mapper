@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Google Maps Heatmap with Enhanced Controls and Stats</title>
+<title>Google Maps Heatmap - Enhanced</title>
 <style>
+/* --- Base Styles (Apply to all screen sizes, or primarily desktop) --- */
+
 /* Basic styling for the map container */
 #map {
 height: 80vh; /* Use 80% of viewport height */
@@ -32,7 +34,7 @@ padding: 8px;
 margin: 0; /* Remove default margin as gap is used */
 border-radius: 4px;
 border: 1px solid #ccc;
-font-size: 0.9rem; /* Slightly smaller font for controls */
+font-size: 0.85rem; /* Adjusted font size slightly smaller */
 }
 
 #lookup-button {
@@ -56,7 +58,8 @@ border-radius: 5px;
 box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
 z-index: 1000; /* Ensure it's above the map */
 display: none; /* Hidden by default */
-font-size: 0.9rem;
+font-size: 0.85rem; /* Adjusted font size */
+/* Desktop positioning is handled by JS (event.domEvent.clientX/Y) */
 }
 
 /* Styling for the postcode stats pop-up box */
@@ -69,14 +72,17 @@ border-radius: 5px;
 box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
 z-index: 1000; /* Ensure it's above the map */
 display: none; /* Hidden by default */
-font-size: 0.9rem;
+font-size: 0.85rem; /* Adjusted font size */
+/* Desktop positioning is handled by JS (relative to input) */
 }
 
-#postcode-stats-box div {
+#postcode-stats-box div,
+#crime-info-box div { /* Apply margin to divs inside both popups */
 margin-bottom: 5px;
 }
 
-#postcode-stats-box strong {
+#postcode-stats-box strong,
+#crime-info-box strong { /* Apply strong color to both popups */
 color: #333;
 }
 
@@ -88,7 +94,7 @@ margin-top: 10px; /* Space below controls */
 background-color: #e9e9e9;
 border-top: 1px solid #ddd;
 text-align: center;
-font-size: 0.9rem;
+font-size: 0.85rem; /* Adjusted font size slightly smaller */
 }
 
 #stats-box div {
@@ -158,6 +164,71 @@ padding: 0;
 font-family: sans-serif; /* Use a common font */
 overflow-x: hidden; /* Prevent horizontal scroll */
 }
+
+
+/* --- Mobile Styles (Apply when screen width is 600px or less) --- */
+@media (max-width: 600px) {
+
+    /* Adjust controls layout for stacking */
+    #controls {
+        flex-direction: column; /* Stack items vertically */
+        align-items: stretch; /* Make items fill the width */
+        padding: 8px; /* Adjust padding */
+        gap: 8px; /* Adjust gap */
+    }
+
+    #controls label,
+    #controls select,
+    #controls input[type="text"],
+    #controls input[type="number"],
+    #controls button {
+        width: 100%; /* Make controls full width */
+        box-sizing: border-box; /* Include padding and border in element's total width */
+        font-size: 1rem; /* Slightly larger font for readability */
+        padding: 10px; /* More padding for touch targets */
+    }
+
+    /* Adjust map height to leave more space for controls/stats */
+    #map {
+       height: 60vh; /* Example: reduce map height on mobile */
+    }
+
+    /* Adjust stats box font size and padding */
+    #stats-box {
+        font-size: 0.85rem;
+        padding: 8px;
+    }
+
+    /* Adjust pop-up boxes position and size for mobile */
+    #crime-info-box,
+    #postcode-stats-box {
+        position: fixed; /* Use fixed positioning relative to viewport */
+        top: auto !important; /* Override any inline 'top' set by JS */
+        bottom: 10px; /* Position from the bottom */
+        left: 10px !important; /* Override any inline 'left' set by JS */
+        right: 10px; /* Position from the right */
+        width: auto; /* Allow width to be determined by left/right */
+        max-width: calc(100% - 20px); /* Ensure max width fits within screen */
+        font-size: 1rem; /* Larger font for readability */
+        padding: 15px; /* More padding */
+        box-sizing: border-box; /* Include padding and border in total size */
+    }
+
+    /* Adjust legend position and size for mobile */
+    #legend {
+        bottom: 10px; /* Position from the bottom */
+        left: 10px; /* Position from the left */
+        font-size: 0.7rem; /* Smaller font */
+        padding: 8px;
+        /* You might need to adjust this further if it overlaps popups */
+        /* Maybe hide it on very small screens? display: none; */
+    }
+
+    #legend h4 {
+        font-size: 0.9rem;
+    }
+}
+
 </style>
 </head>
 <body>
@@ -227,6 +298,23 @@ var uniqueCategories = new Set();
 // Variable to hold the currently drawn radius circle (used for both map click and postcode lookup)
 var currentRadiusCircle = null;
 
+// Define the gradient colors for the heatmap to match the legend
+const HEATMAP_GRADIENT = [
+    'rgba(0, 255, 255, 0)', // Transparent Cyan (Low Density)
+    'rgba(0, 255, 255, 1)', // Cyan
+    'rgba(0, 191, 255, 1)',
+    'rgba(0, 127, 255, 1)',
+    'rgba(0, 63, 255, 1)',
+    'rgba(0, 0, 223, 1)',
+    'rgba(0, 0, 191, 1)',
+    'rgba(0, 0, 159, 1)',
+    'rgba(0, 0, 127, 1)',
+    'rgba(63, 0, 91, 1)',
+    'rgba(127, 0, 63, 1)',
+    'rgba(191, 0, 31, 1)',
+    'rgba(255, 0, 0, 1)'  // Red (High Density)
+];
+
 
 // Replace with the path to your CSV file
 const CSV_FILE_URL = 'combined_output.csv';
@@ -246,7 +334,8 @@ heatmap = new google.maps.visualization.HeatmapLayer({
 data: new google.maps.MVCArray([]), // Start with an empty data array
 dissipating: true,
 radius: parseInt(document.getElementById('radius-input').value), // Initial radius from input
-maxIntensity: parseInt(document.getElementById('intensity-input').value) // Initial intensity from input
+maxIntensity: parseInt(document.getElementById('intensity-input').value), // Initial intensity from input
+gradient: HEATMAP_GRADIENT // Set the custom gradient
 });
 heatmap.setMap(map);
 
@@ -258,6 +347,16 @@ document.getElementById('category-filter').addEventListener('change', updateHeat
 
 // Add event listener for postcode lookup button
 document.getElementById('lookup-button').addEventListener('click', geocodePostcode);
+
+// Add event listener for 'keypress' on the postcode input to trigger lookup on Enter key
+document.getElementById('postcode-input').addEventListener('keypress', function(event) {
+    // Check if the pressed key was 'Enter' (key code 13)
+    if (event.key === 'Enter' || event.keyCode === 13) {
+        event.preventDefault(); // Prevent the default form submission if any
+        geocodePostcode(); // Trigger the postcode lookup function
+    }
+});
+
 
 // Add event listeners for heatmap radius and intensity inputs
 document.getElementById('radius-input').addEventListener('change', updateHeatmapSettings);

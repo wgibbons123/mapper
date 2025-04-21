@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Google Maps Heatmap with Enhanced Controls and Stats</title>
+<style>
+/* Basic styling for the map container */
+#map {
+height: 80vh; /* Use 80% of viewport height */
+width: 100%;
+}
+
+/* Styling for the controls container */
+#controls {
+padding: 10px;
+background-color: #f8f8f8;
+border-bottom: 1px solid #ddd;
+text-align: center; /* Center the dropdown and postcode input */
+display: flex; /* Use flexbox for better layout of controls */
+justify-content: center; /* Center items horizontally */
+align-items: center; /* Center items vertically */
+flex-wrap: wrap; /* Allow items to wrap on smaller screens */
+gap: 10px; /* Add some space between control items */
+}
+
+/* Basic styling for control elements */
+#controls label,
+#controls select,
+#controls input[type="text"],
+#controls input[type="number"],
+#controls button {
+padding: 8px;
+margin: 0; /* Remove default margin as gap is used */
+border-radius: 4px;
+border: 1px solid #ccc;
+font-size: 0.9rem; /* Slightly smaller font for controls */
+}
+
+#lookup-button {
+background-color: #4CAF50; /* Green */
+color: white;
+cursor: pointer;
+border: none;
+}
+
+#lookup-button:hover {
+background-color: #45a049;
+}
+
+/* Styling for the crime count info box (map click) */
+#crime-info-box {
+position: absolute;
+background-color: white;
+padding: 10px;
+border: 1px solid #ccc;
+border-radius: 5px;
+box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+z-index: 1000; /* Ensure it's above the map */
+display: none; /* Hidden by default */
+font-size: 0.9rem;
+}
+
+/* Styling for the postcode stats pop-up box */
+#postcode-stats-box {
+position: absolute;
+background-color: white;
+padding: 10px;
+border: 1px solid #ccc;
+border-radius: 5px;
+box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+z-index: 1000; /* Ensure it's above the map */
+display: none; /* Hidden by default */
+font-size: 0.9rem;
+}
+
+#postcode-stats-box div {
+margin-bottom: 5px;
+}
+
+#postcode-stats-box strong {
+color: #333;
+}
+
+
+/* Styling for the stats display area (overall stats) */
+#stats-box {
+padding: 10px;
+margin-top: 10px; /* Space below controls */
+background-color: #e9e9e9;
+border-top: 1px solid #ddd;
+text-align: center;
+font-size: 0.9rem;
+}
+
+#stats-box div {
+margin-bottom: 5px;
+}
+
+#stats-box strong {
+color: #333;
+}
+
+
+/* Styling for the legend */
+#legend {
+position: absolute;
+bottom: 20px;
+left: 20px;
+background-color: white;
+padding: 10px;
+border: 1px solid #ccc;
+border-radius: 5px;
+box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+z-index: 1000;
+font-size: 0.8rem;
+}
+
+#legend h4 {
+margin-top: 0;
+margin-bottom: 5px;
+text-align: center;
+}
+
+#legend .color-box {
+display: inline-block;
+width: 20px;
+height: 10px;
+margin-right: 5px;
+border: 1px solid #000;
+}
+
+/* Styling for the loading indicator */
+#loading-indicator {
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background-color: rgba(255, 255, 255, 0.8); /* Semi-transparent white overlay */
+display: flex;
+justify-content: center;
+align-items: center;
+font-size: 1.2rem;
+font-weight: bold;
+color: #333;
+z-index: 2000; /* Ensure it's above everything else */
+pointer-events: none; /* Allow clicks to pass through when hidden */
+}
+
+#loading-indicator.hidden {
+display: none;
+}
+
+
+html, body {
+height: 100%;
+margin: 0;
+padding: 0;
+font-family: sans-serif; /* Use a common font */
+overflow-x: hidden; /* Prevent horizontal scroll */
+}
+</style>
+</head>
+<body>
+<div id="controls">
+<label for="category-filter">Category:</label>
+<select id="category-filter">
+<option value="all">All Categories</option>
+</select>
+
+<label for="postcode-input">Postcode:</label>
+<input type="text" id="postcode-input" placeholder="Enter Postcode">
+<button id="lookup-button">Go</button>
+
+<label for="radius-input">Heatmap Radius:</label>
+<input type="number" id="radius-input" value="10" min="1" max="50">
+
+<label for="intensity-input">Heatmap Intensity:</label>
+<input type="number" id="intensity-input" value="10" min="1" max="20" step="1">
+
+<label for="crime-radius-input">Count Radius (km):</label>
+<input type="number" id="crime-radius-input" value="3" min="0.1" step="0.1">
+
+</div>
+
+<div id="stats-box">
+Loading statistics...
+</div>
+
+<div id="map"></div>
+
+<div id="crime-info-box">
+</div>
+
+<div id="postcode-stats-box">
+</div>
+
+<div id="legend">
+<h4>Heatmap Legend</h4>
+<div><span class="color-box" style="background-color: rgba(0, 255, 255, 0);"></span> Low Density</div>
+<div><span class="color-box" style="background-color: rgba(0, 255, 255, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 191, 255, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 127, 255, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 63, 255, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 0, 223, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 0, 191, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 0, 159, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(0, 0, 127, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(63, 0, 91, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(127, 0, 63, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(191, 0, 31, 1);"></span></div>
+<div><span class="color-box" style="background-color: rgba(255, 0, 0, 1);"></span> High Density</div>
+</div>
+
+<div id="loading-indicator" class="hidden">
+Loading data...
+</div>
+
+
+<script>
+var map;
+var heatmap;
+var geocoder; // Geocoder for postcode lookup
+// Store all data points with their categories and potentially other details
+var allDataPoints = [];
+// Store unique categories found in the data
+var uniqueCategories = new Set();
+// Variable to hold the currently drawn radius circle (used for both map click and postcode lookup)
+var currentRadiusCircle = null;
+
+
+// Replace with the path to your CSV file
+const CSV_FILE_URL = 'combined_output.csv';
+
+// Initialize the map
+function initMap() {
+map = new google.maps.Map(document.getElementById('map'), {
+zoom: 6,
+center: {lat: 50, lng: 0}, // Initial center (e.g., UK)
+mapTypeId: 'roadmap'
+});
+
+geocoder = new google.maps.Geocoder(); // Initialize the geocoder
+
+// Create the heatmap layer initially, but set data later
+heatmap = new google.maps.visualization.HeatmapLayer({
+data: new google.maps.MVCArray([]), // Start with an empty data array
+dissipating: true,
+radius: parseInt(document.getElementById('radius-input').value), // Initial radius from input
+maxIntensity: parseInt(document.getElementById('intensity-input').value) // Initial intensity from input
+});
+heatmap.setMap(map);
+
+// Load the CSV data
+loadCSVData();
+
+// Add event listener to the dropdown filter
+document.getElementById('category-filter').addEventListener('change', updateHeatmap);
+
+// Add event listener for postcode lookup button
+document.getElementById('lookup-button').addEventListener('click', geocodePostcode);
+
+// Add event listeners for heatmap radius and intensity inputs
+document.getElementById('radius-input').addEventListener('change', updateHeatmapSettings);
+document.getElementById('intensity-input').addEventListener('change', updateHeatmapSettings);
+document.getElementById('intensity-input').addEventListener('input', updateHeatmapSettings); // Also listen to input for smoother changes
+
+
+// Add click event listener to the map
+map.addListener('click', handleMapClick);
+
+// Add a single click listener to the document body to hide info boxes and remove circle
+document.body.addEventListener('click', handleBodyClick);
+}
+
+// Fetch and load data from the CSV file
+function loadCSVData() {
+// Show loading indicator
+document.getElementById('loading-indicator').classList.remove('hidden');
+document.getElementById('loading-indicator').innerText = 'Loading data...'; // Set initial message
+
+fetch(CSV_FILE_URL)
+.then(response => {
+if (!response.ok) {
+throw new Error(`HTTP error! status: ${response.status}`);
+}
+return response.text();
+})
+.then(csvText => {
+parseCSV(csvText);
+populateCategoryFilter();
+// Initially display all points
+updateHeatmap();
+updateStatsDisplay(); // Update overall stats after loading
+})
+.catch(error => {
+console.error('Error loading or parsing CSV file:', error);
+// Display an error message on the page if loading fails
+document.getElementById('controls').innerHTML = '<p style="color: red;">Error loading data. Please check the CSV file path and format.</p>';
+document.getElementById('stats-box').innerHTML = '<p style="color: red;">Error loading data.</p>';
+// Update loading indicator with error message
+document.getElementById('loading-indicator').innerText = `Error loading data: ${error.message}`;
+})
+.finally(() => {
+// Hide loading indicator after fetch is complete (success or failure)
+document.getElementById('loading-indicator').classList.add('hidden');
+});
+}
+
+// Parse the CSV text into data points
+function parseCSV(csvText) {
+const lines = csvText.split('\n');
+// Handle potential empty last line
+const nonEmptyLines = lines.filter(line => line.trim() !== '');
+
+if (nonEmptyLines.length < 2) {
+console.error("CSV file is empty or only contains headers.");
+// Update loading indicator message
+document.getElementById('loading-indicator').innerText = 'CSV file is empty or only contains headers.';
+return;
+}
+
+const headers = nonEmptyLines[0].split(',');
+const latitudeIndex = headers.findIndex(header => header.trim().toLowerCase() === 'latitude');
+const longitudeIndex = headers.findIndex(header => header.trim().toLowerCase() === 'longitude');
+const categoryIndex = headers.findIndex(header => header.trim().toLowerCase() === 'category');
+
+if (latitudeIndex === -1 || longitudeIndex === -1) {
+console.error("CSV must contain 'latitude' and 'longitude' columns.");
+// Update loading indicator message
+document.getElementById('loading-indicator').innerText = "Error: CSV must contain 'latitude' and 'longitude' columns.";
+return; // Stop parsing if essential columns are missing
+}
+// Category column is optional, but useful
+if (categoryIndex === -1) {
+console.warn("CSV does not contain a 'category' column. Filtering will not be available.");
+}
+
+// Clear previous data
+allDataPoints = [];
+uniqueCategories = new Set();
+
+// Start from the second line to skip headers
+for (let i = 1; i < nonEmptyLines.length; i++) {
+const values = lines[i].split(','); // Use original lines array here to handle commas within fields if not properly quoted
+
+// Basic check to ensure row has enough columns for lat/lng
+if (values.length > Math.max(latitudeIndex, longitudeIndex)) {
+const lat = parseFloat(values[latitudeIndex]);
+const lng = parseFloat(values[longitudeIndex]);
+// Use a simple split for category, might need more robust CSV parsing for complex cases
+const cat = categoryIndex !== -1 && values[categoryIndex] ? values[categoryIndex].trim() : 'Unknown'; // Default to 'Unknown'
+
+// Check if lat and lng are valid numbers
+if (!isNaN(lat) && !isNaN(lng) ) {
+// Store the point with category and potentially other data
+// Assuming other columns might exist, store the whole row or relevant parts
+const pointData = {
+lat: lat,
+lng: lng,
+category: cat,
+// Add other relevant data from the row here if needed for info windows etc.
+// e.g., description: values[descriptionIndex] ? values[descriptionIndex].trim() : ''
+};
+allDataPoints.push(pointData);
+uniqueCategories.add(cat); // Add category to the set
+} else {
+console.warn(`Skipping row ${i + 1} due to invalid lat/lng: ${lines[i]}`);
+}
+} else {
+console.warn(`Skipping row ${i + 1} due to insufficient columns (expected at least ${Math.max(latitudeIndex, longitudeIndex) + 1}): ${lines[i]}`);
+}
+}
+console.log(`Loaded ${allDataPoints.length} data points.`);
+console.log(`Found ${uniqueCategories.size} unique categories.`);
+// Update loading indicator message on success
+document.getElementById('loading-indicator').innerText = `Loaded ${allDataPoints.length} data points.`;
+}
+
+// Populate the category filter dropdown
+function populateCategoryFilter() {
+const selectElement = document.getElementById('category-filter');
+// Clear existing options except 'All Categories'
+selectElement.innerHTML = '<option value="all">All Categories</option>';
+
+// Add unique categories from the set
+const sortedCategories = Array.from(uniqueCategories).sort(); // Sort categories alphabetically
+sortedCategories.forEach(category => {
+const option = document.createElement('option');
+option.value = category;
+option.textContent = category;
+selectElement.appendChild(option);
+});
+}
+
+// Filter data based on selected category and update the heatmap
+function updateHeatmap() {
+const selectedCategory = document.getElementById('category-filter').value;
+let currentHeatmapData = [];
+
+if (selectedCategory === 'all') {
+// If 'All Categories' is selected, use all data points
+currentHeatmapData = allDataPoints;
+} else {
+// Otherwise, filter by the selected category
+currentHeatmapData = allDataPoints.filter(point => point.category === selectedCategory);
+}
+
+// Convert filtered data points to google.maps.LatLng objects
+const googleMapsData = currentHeatmapData.map(point => new google.maps.LatLng(point.lat, point.lng));
+
+// Update the heatmap layer's data
+heatmap.setData(new google.maps.MVCArray(googleMapsData));
+
+console.log(`Displaying ${googleMapsData.length} points for category: ${selectedCategory}`);
+
+// Update stats display based on the current filter
+updateStatsDisplay(); // Keep this to update overall stats when filter changes
+}
+
+// Update heatmap radius and intensity based on input values
+function updateHeatmapSettings() {
+const radius = parseInt(document.getElementById('radius-input').value);
+const intensity = parseInt(document.getElementById('intensity-input').value);
+
+if (!isNaN(radius) && radius > 0) {
+heatmap.setOptions({ radius: radius });
+}
+if (!isNaN(intensity) && intensity > 0) {
+heatmap.setOptions({ maxIntensity: intensity });
+}
+}
+
+
+// Geocode the entered postcode and center the map, then show stats
+function geocodePostcode() {
+const postcode = document.getElementById('postcode-input').value.trim();
+if (!postcode) {
+alert('Please enter a postcode.');
+return;
+}
+
+// Hide any existing info boxes and remove the previous circle first
+document.getElementById('crime-info-box').style.display = 'none';
+document.getElementById('postcode-stats-box').style.display = 'none';
+if (currentRadiusCircle) {
+currentRadiusCircle.setMap(null);
+currentRadiusCircle = null;
+}
+
+// Use the Geocoding API to convert postcode to coordinates
+geocoder.geocode({'address': postcode}, (results, status) => {
+if (status === 'OK') {
+if (results[0]) {
+const postcodeLocation = results[0].geometry.location;
+map.setCenter(postcodeLocation);
+// Optionally set a zoom level appropriate for a postcode
+map.setZoom(14); // Example zoom level
+
+// Now calculate and display stats for the area around the postcode
+calculateAndDisplayAreaStats(postcodeLocation, postcode);
+
+} else {
+alert('No results found for that postcode.');
+// Hide postcode stats box if lookup fails
+document.getElementById('postcode-stats-box').style.display = 'none';
+updateStatsDisplay(); // Show default overall stats
+}
+} else {
+alert('Geocoder failed due to: ' + status);
+console.error('Geocoder failed due to: ' + status);
+// Hide postcode stats box if lookup fails
+document.getElementById('postcode-stats-box').style.display = 'none';
+updateStatsDisplay(); // Show default overall stats
+}
+});
+}
+
+// Calculate and display statistics for a given area (used by postcode lookup)
+function calculateAndDisplayAreaStats(centerLocation, areaName = 'Selected Area') {
+let crimeCount = 0;
+const categoryCounts = {}; // Object to store counts per category
+const postcodeStatsBox = document.getElementById('postcode-stats-box');
+const radiusKmInput = document.getElementById('crime-radius-input');
+const radiusMeters = parseFloat(radiusKmInput.value) * 1000; // Get radius from input and convert to meters
+
+if (isNaN(radiusMeters) || radiusMeters <= 0) {
+console.error('Invalid radius for area stats.');
+postcodeStatsBox.style.display = 'none'; // Hide box if radius is invalid
+updateStatsDisplay(); // Show default stats
+return;
+}
+
+// Count based on the currently selected category for relevance
+const selectedCategory = document.getElementById('category-filter').value;
+const pointsToCount = selectedCategory === 'all' ? allDataPoints : allDataPoints.filter(point => point.category === selectedCategory);
+
+pointsToCount.forEach(point => {
+const pointLocation = new google.maps.LatLng(point.lat, point.lng);
+const distance = google.maps.geometry.spherical.computeDistanceBetween(centerLocation, pointLocation);
+
+if (distance <= radiusMeters) {
+crimeCount++;
+// Increment category count
+const cat = point.category || 'Unknown';
+categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+}
+});
+
+// Build the content for the postcode area stats box
+let statsContent = `<div>Stats near <strong>${areaName}</strong> (${radiusMeters / 1000}km radius): <strong>${crimeCount}</strong> crimes</div>`;
+
+if (crimeCount > 0) {
+statsContent += '<div>Breakdown:</div>';
+// Sort categories alphabetically for consistent display
+const sortedCategories = Object.keys(categoryCounts).sort();
+sortedCategories.forEach(cat => {
+statsContent += `<div>&nbsp;&nbsp;- ${cat}: ${categoryCounts[cat]}</div>`;
+});
+} else {
+statsContent += '<div>No crimes found in this area.</div>';
+}
+
+// Display the stats in the postcode stats box
+postcodeStatsBox.innerHTML = statsContent;
+
+// Position the postcode stats box
+// A simple approach: position relative to the postcode input field
+const postcodeInputRect = document.getElementById('postcode-input').getBoundingClientRect();
+postcodeStatsBox.style.left = `${postcodeInputRect.left}px`;
+postcodeStatsBox.style.top = `${postcodeInputRect.bottom + 10}px`; // Position below the input
+
+// Show the box
+postcodeStatsBox.style.display = 'block';
+postcodeStatsBox.style.pointerEvents = 'auto'; // Enable pointer events
+
+// Draw the radius circle on the map
+currentRadiusCircle = new google.maps.Circle({
+strokeColor: '#FF0000',
+strokeOpacity: 0.8,
+strokeWeight: 2,
+fillColor: '#FF0000',
+fillOpacity: 0.15,
+map: map,
+center: centerLocation,
+radius: radiusMeters // Radius in meters
+});
+}
+
+
+// Handle map click to show crime count in radius and draw circle
+function handleMapClick(event) {
+// Hide any existing info boxes and remove the previous circle first
+document.getElementById('crime-info-box').style.display = 'none';
+document.getElementById('postcode-stats-box').style.display = 'none';
+if (currentRadiusCircle) {
+currentRadiusCircle.setMap(null);
+currentRadiusCircle = null;
+}
+
+const clickLocation = event.latLng;
+let crimeCount = 0;
+const categoryCounts = {}; // Object to store counts per category
+const infoBox = document.getElementById('crime-info-box');
+const radiusKmInput = document.getElementById('crime-radius-input');
+const radiusMeters = parseFloat(radiusKmInput.value) * 1000; // Get radius from input and convert to meters
+
+if (isNaN(radiusMeters) || radiusMeters <= 0) {
+alert('Please enter a valid radius in kilometers.');
+return;
+}
+
+
+// Count based on the currently selected category for relevance
+const selectedCategory = document.getElementById('category-filter').value;
+const pointsToCount = selectedCategory === 'all' ? allDataPoints : allDataPoints.filter(point => point.category === selectedCategory);
+
+
+pointsToCount.forEach(point => {
+const pointLocation = new google.maps.LatLng(point.lat, point.lng);
+const distance = google.maps.geometry.spherical.computeDistanceBetween(clickLocation, pointLocation);
+
+if (distance <= radiusMeters) {
+crimeCount++;
+// Increment category count
+const cat = point.category || 'Unknown';
+categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+}
+});
+
+// Build the content for the info box
+let infoContent = `Crimes within ${radiusMeters / 1000}km radius: <strong>${crimeCount}</strong>`;
+
+if (crimeCount > 0) {
+infoContent += '<br>Breakdown:';
+// Sort categories alphabetically for consistent display
+const sortedCategories = Object.keys(categoryCounts).sort();
+sortedCategories.forEach(cat => {
+infoContent += `<br>&nbsp;&nbsp;- ${cat}: ${categoryCounts[cat]}`;
+});
+}
+
+
+// Display the count and breakdown in the info box
+infoBox.innerHTML = infoContent;
+
+// Position the info box near the click location
+// Use the event's pixel coordinates directly for simpler positioning relative to the viewport
+infoBox.style.left = `${event.domEvent.clientX + 10}px`;
+infoBox.style.top = `${event.domEvent.clientY + 10}px`;
+
+// Show the box
+infoBox.style.display = 'block';
+// Ensure pointer events are enabled when visible
+infoBox.style.pointerEvents = 'auto';
+
+
+// Draw the radius circle on the map
+currentRadiusCircle = new google.maps.Circle({
+strokeColor: '#FF0000',
+strokeOpacity: 0.8,
+strokeWeight: 2,
+fillColor: '#FF0000',
+fillOpacity: 0.15,
+map: map,
+center: clickLocation,
+radius: radiusMeters // Radius in meters
+});
+}
+
+// Handle clicks on the document body to hide info boxes and remove circle
+function handleBodyClick(event) {
+const crimeInfoBox = document.getElementById('crime-info-box');
+const postcodeStatsBox = document.getElementById('postcode-stats-box');
+
+// Check if the click was outside any of the interactive elements
+const clickedOnMap = event.target === map.getDiv();
+const clickedOnControls = document.getElementById('controls').contains(event.target);
+const clickedOnStatsBox = document.getElementById('stats-box').contains(event.target); // Overall stats box
+const clickedOnLegend = document.getElementById('legend').contains(event.target);
+const clickedOnCrimeInfoBox = crimeInfoBox.contains(event.target);
+const clickedOnPostcodeStatsBox = postcodeStatsBox.contains(event.target);
+
+
+// Hide crime info box if it's visible and click is outside it and other interactive elements
+if (crimeInfoBox.style.display === 'block' && !clickedOnCrimeInfoBox && !clickedOnMap && !clickedOnControls && !clickedOnStatsBox && !clickedOnLegend && !clickedOnPostcodeStatsBox) {
+crimeInfoBox.style.display = 'none';
+crimeInfoBox.style.pointerEvents = 'none';
+}
+
+// Hide postcode stats box if it's visible and click is outside it and other interactive elements
+if (postcodeStatsBox.style.display === 'block' && !clickedOnPostcodeStatsBox && !clickedOnMap && !clickedOnControls && !clickedOnStatsBox && !clickedOnLegend && !clickedOnCrimeInfoBox) {
+postcodeStatsBox.style.display = 'none';
+postcodeStatsBox.style.pointerEvents = 'none';
+}
+
+
+// Remove the radius circle if clicking on the map or outside interactive elements
+if (currentRadiusCircle && (clickedOnMap || (!clickedOnCrimeInfoBox && !clickedOnPostcodeStatsBox && !clickedOnControls && !clickedOnStatsBox && !clickedOnLegend))) {
+currentRadiusCircle.setMap(null);
+currentRadiusCircle = null;
+}
+}
+
+
+// Update the statistics display area (overall stats)
+function updateStatsDisplay() {
+const statsBox = document.getElementById('stats-box');
+const totalPointsLoaded = allDataPoints.length;
+const numUniqueCategories = uniqueCategories.size;
+const selectedCategory = document.getElementById('category-filter').value;
+
+let currentViewCount = 0;
+if (selectedCategory === 'all') {
+currentViewCount = totalPointsLoaded;
+} else {
+currentViewCount = allDataPoints.filter(point => point.category === selectedCategory).length;
+}
+
+// Default content for the stats box (overall stats)
+const overallStatsContent = `<div>Total Points Loaded: <strong>${totalPointsLoaded}</strong> | Unique Categories: <strong>${numUniqueCategories}</strong> | Points in Current View: <strong>${currentViewCount}</strong></div>`;
+
+// Always update the overall stats box content
+statsBox.innerHTML = overallStatsContent;
+}
+
+
+// The Google Maps API script tag with your key and callback
+// Ensure you replace 'YOUR_GOOGLE_MAPS_API_KEY' with your actual API key
+// The 'callback=initMap' parameter tells the API to call initMap once loaded
+// Added 'geocoding' and 'geometry' libraries
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDtiYH_aoxtaM7CqD2YSiHsZAWTRkfjKuk&libraries=visualization,geocoding,geometry&callback=initMap" async defer></script>
+</body>
+</html>

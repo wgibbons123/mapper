@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Google Maps Heatmap - Enhanced</title>
+<title>Google Maps Heatmap - Enhanced Mobile Styling</title>
 <style>
 /* --- Base Styles (Apply to all screen sizes, or primarily desktop) --- */
 
@@ -34,7 +34,7 @@ padding: 8px;
 margin: 0; /* Remove default margin as gap is used */
 border-radius: 4px;
 border: 1px solid #ccc;
-font-size: 0.7rem; /* Adjusted font size slightly smaller */
+font-size: 0.85rem; /* Adjusted font size slightly smaller */
 }
 
 #lookup-button {
@@ -173,11 +173,16 @@ overflow-x: hidden; /* Prevent horizontal scroll */
     #controls {
         flex-direction: column; /* Stack items vertically */
         align-items: stretch; /* Make items fill the width */
-        padding: 8px; /* Adjust padding */
-        gap: 8px; /* Adjust gap */
+        padding: 10px; /* Increased padding */
+        gap: 10px; /* Increased gap */
     }
 
-    #controls label,
+    #controls label {
+        text-align: left; /* Align labels to the left when stacked */
+        margin-bottom: 2px; /* Small margin below label */
+        font-size: 0.9rem; /* Slightly smaller font for labels */
+    }
+
     #controls select,
     #controls input[type="text"],
     #controls input[type="number"],
@@ -185,7 +190,8 @@ overflow-x: hidden; /* Prevent horizontal scroll */
         width: 100%; /* Make controls full width */
         box-sizing: border-box; /* Include padding and border in element's total width */
         font-size: 1rem; /* Slightly larger font for readability */
-        padding: 10px; /* More padding for touch targets */
+        padding: 12px; /* Increased padding for touch targets */
+        min-height: 44px; /* Recommended minimum touch target size */
     }
 
     /* Adjust map height to leave more space for controls/stats */
@@ -195,8 +201,8 @@ overflow-x: hidden; /* Prevent horizontal scroll */
 
     /* Adjust stats box font size and padding */
     #stats-box {
-        font-size: 0.85rem;
-        padding: 8px;
+        font-size: 0.9rem; /* Slightly larger font */
+        padding: 10px; /* Increased padding */
     }
 
     /* Adjust pop-up boxes position and size for mobile */
@@ -218,14 +224,14 @@ overflow-x: hidden; /* Prevent horizontal scroll */
     #legend {
         bottom: 10px; /* Position from the bottom */
         left: 10px; /* Position from the left */
-        font-size: 0.7rem; /* Smaller font */
-        padding: 8px;
+        font-size: 0.75rem; /* Slightly larger font */
+        padding: 10px; /* Increased padding */
         /* You might need to adjust this further if it overlaps popups */
         /* Maybe hide it on very small screens? display: none; */
     }
 
     #legend h4 {
-        font-size: 0.9rem;
+        font-size: 1rem; /* Slightly larger font */
     }
 }
 

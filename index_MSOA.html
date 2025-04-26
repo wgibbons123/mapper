@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSOA Category Map</title>
+    <style>
+        /* Basic styling for the map container */
+        #map {
+            height: 80vh; /* Make the map take up 80% of the viewport height */
+            width: 100%; /* Make the map take up 100% of the viewport width */
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Styling for the controls container */
+        #controls {
+            padding: 10px;
+            background-color: #f8f8f8;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 15px; /* Space between items */
+        }
+
+        #controls label {
+            font-family: sans-serif;
+            font-weight: bold;
+        }
+
+        #controls select {
+            padding: 5px;
+            font-size: 1rem;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        /* Styling for the info window */
+        .info-window-content {
+            font-family: sans-serif;
+        }
+        .info-window-content h3 {
+            margin-top: 0;
+            margin-bottom: 5px;
+        }
+        .info-window-content p {
+            margin-bottom: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>MSOA Category Map</h1>
+
+    <div id="controls">
+        <label for="category-select">Select Category:</label>
+        <select id="category-select">
+            </select>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // --- Configuration ---
+        // <<< IMPORTANT: Replace with your actual Google Maps API Key >>>
+        // Get an API key from the Google Cloud Console: https://cloud.google.com/maps-platform/
+        const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY'; // Replace with your key
+
+        // <<< IMPORTANT: Update these file paths >>>
+        // Path to the MSOA GeoJSON file (e.g., the 2021 boundaries file)
+        const MSOA_GEOJSON_URL = 'Middle_layer_Super_Output_Areas_December_2021_Boundaries_EW_BSC_V3_-787172806895721193.geojson'; // Replace with your GeoJSON file path/URL
+        // Path to the output CSV file from the Python script (e.g., msoa_category_counts.csv)
+        const CATEGORY_COUNTS_CSV_URL = 'msoa_category_counts.csv'; // Replace with your CSV file path/URL
+
+        // <<< IMPORTANT: Update these based on your CSV and GeoJSON structure >>>
+        // The name of the MSOA code column in the CSV (must match the pivot index)
+        const CSV_MSOA_CODE_COLUMN_NAME = 'MSOA21CD'; // Match the column name from the Python output
+        // The name of the MSOA name column in the CSV (must match the pivot index)
+        const CSV_MSOA_NAME_COLUMN_NAME = 'MSOA21NM'; // Match the column name from the Python output
+        // The delimiter used in your output CSV file
+        const CSV_DELIMITER = ','; // Update if necessary
+
+        // The name of the property key in the GeoJSON features that holds the MSOA code
+        // This must match the key used in the GeoJSON file
+        const GEOJSON_MSOA_PROPERTY_KEY = 'MSOA21CD'; // <<< Update if necessary >>>
+
+        // --- Global Variables ---
+        let map;
+        let dataLayer;
+        let infoWindow;
+        let msoaData = new Map(); // Map to store CSV data: MSOA_Code -> { Category1: count, Category2: count, ..., Total: count }
+        let categories = []; // Array of category names from the CSV header
+        const TOTAL_CATEGORY_KEY = 'Total Observations'; // Key for the total count option
+
+        // --- Map Initialization ---
+        function initMap() {
+            // Initialize the Google Map
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 55.0, lng: -2.0 }, // Center of the UK (approximate)
+                zoom: 6, // Adjust initial zoom level as needed
+                mapTypeId: 'terrain' // Optional: change map type
+            });
+
+            // Create a new Data layer to hold the GeoJSON features
+            dataLayer = new google.maps.Data();
+            dataLayer.setMap(map); // Add the data layer to the map
+
+            // Create an info window to display data when a feature is clicked
+            infoWindow = new google.maps.InfoWindow();
+
+            // Add an event listener for clicks on features in the data layer
+            dataLayer.addListener('click', function(event) {
+                const feature = event.feature;
+                const properties = feature.getProperty('csvData'); // Get the merged CSV data
+
+                let content = `<div class="info-window-content"><h3>MSOA: ${feature.getProperty(GEOJSON_MSOA_PROPERTY_KEY)}</h3>`;
+                if (feature.getProperty('msoaName')) { // Check if MSOA name property exists
+                     content += `<p>Name: ${feature.getProperty('msoaName')}</p>`;
+                }
+
+
+                if (properties) {
+                    // Display counts for all categories and the total
+                    content += `<p><strong>Counts:</strong></p><ul>`;
+                    // Add total first
+                    if (properties[TOTAL_CATEGORY_KEY] !== undefined) {
+                         content += `<li>${TOTAL_CATEGORY_KEY}: ${properties[TOTAL_CATEGORY_KEY]}</li>`;
+                    }
+                    // Add individual categories
+                    categories.forEach(cat => {
+                        if (properties[cat] !== undefined) {
+                            content += `<li>${cat}: ${properties[cat]}</li>`;
+                        }
+                    });
+                    content += `</ul>`;
+                } else {
+                    content += `<p>No data available for this MSOA.</p>`;
+                }
+
+                content += `</div>`;
+
+                infoWindow.setContent(content);
+                infoWindow.setPosition(event.latLng); // Position info window at click location
+                infoWindow.open(map); // Open the info window
+            });
+
+            // Add event listener for the category dropdown
+            document.getElementById('category-select').addEventListener('change', function(event) {
+                const selectedCategory = event.target.value;
+                styleMapByCategory(selectedCategory);
+            });
+
+            // Load the data and populate the dropdown
+            loadDataAndSetupControls();
+        }
+
+        // --- Data Loading and Setup ---
+
+        async function loadDataAndSetupControls() {
+            try {
+                // Fetch the CSV data
+                const csvResponse = await fetch(CATEGORY_COUNTS_CSV_URL);
+                if (!csvResponse.ok) {
+                    throw new Error(`HTTP error! status: ${csvResponse.status}`);
+                }
+                const csvText = await csvResponse.text();
+                parseCSVData(csvText, CSV_DELIMITER);
+                console.log("CSV data parsed:", msoaData);
+                console.log("Categories found:", categories);
+
+                // Fetch the GeoJSON data
+                const geojsonResponse = await fetch(MSOA_GEOJSON_URL);
+                 if (!geojsonResponse.ok) {
+                    throw new Error(`HTTP error! status: ${geojsonResponse.status}`);
+                }
+                const geojsonData = await geojsonResponse.json();
+
+                // Add the GeoJSON data to the map's data layer FIRST
+                // This converts the raw GeoJSON features into google.maps.Data.Feature objects
+                dataLayer.addGeoJson(geojsonData);
+                console.log("GeoJSON data added to map data layer.");
+
+                // Now, iterate over the features IN THE DATA LAYER and merge CSV data
+                mergeCsvDataIntoDataLayerFeatures(dataLayer, msoaData, GEOJSON_MSOA_PROPERTY_KEY);
+                console.log("CSV data merged into data layer features.");
+
+
+                // Populate the category dropdown
+                populateCategoryDropdown();
+
+                // Style the map initially with the total observations
+                styleMapByCategory(TOTAL_CATEGORY_KEY);
+
+
+            } catch (error) {
+                console.error("Error loading or setting up data:", error);
+                alert("Error loading map data. Check console for details."); // Use alert for simplicity
+            }
+        }
+
+        // --- Helper Functions ---
+
+        // Parses the CSV output from the Python script
+        function parseCSVData(csvText, delimiter) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length < 2) {
+                 console.warn("CSV file is empty or has no data rows.");
+                 return; // No data to parse
+            }
+
+            const header = lines[0].split(delimiter).map(h => h.trim());
+            // Find the indices of the MSOA code and name columns
+            const msoaCodeIndex = header.indexOf(CSV_MSOA_CODE_COLUMN_NAME);
+            const msoaNameIndex = header.indexOf(CSV_MSOA_NAME_COLUMN_NAME);
+
+            if (msoaCodeIndex === -1) {
+                console.error(`Error: CSV header does not contain the MSOA code column "${CSV_MSOA_CODE_COLUMN_NAME}".`);
+                return;
+            }
+             if (msoaNameIndex === -1) {
+                console.error(`Error: CSV header does not contain the MSOA name column "${CSV_MSOA_NAME_COLUMN_NAME}".`);
+                return;
+            }
+
+            // Extract category names (all columns after MSOA code and name)
+            // Assumes categories are after MSOA columns and that MSOA columns are adjacent
+            const msoaColumnEndIndex = Math.max(msoaCodeIndex, msoaNameIndex);
+            categories = header.slice(msoaColumnEndIndex + 1);
+
+
+            // Process data rows
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue; // Skip empty lines
+
+                const values = line.split(delimiter);
+                 // Basic check for minimum expected columns (MSOA code, name, and at least one category)
+                if (values.length < msoaColumnEndIndex + 2) {
+                     console.warn(`Skipping CSV row ${i + 1} due to insufficient columns: ${line}`);
+                     continue;
+                }
+
+                const msoaCode = values[msoaCodeIndex].trim();
+                const msoaName = values[msoaNameIndex].trim();
+                const categoryCounts = {};
+                let totalCount = 0;
+
+                // Extract category counts
+                categories.forEach((category, index) => {
+                    const valueIndex = msoaColumnEndIndex + 1 + index;
+                    // Ensure the valueIndex is within the bounds of the values array
+                    if (valueIndex < values.length) {
+                        const count = parseInt(values[valueIndex], 10);
+                        if (!isNaN(count)) {
+                            categoryCounts[category] = count;
+                            totalCount += count;
+                        } else {
+                            console.warn(`Could not parse count "${values[valueIndex]}" for MSOA ${msoaCode}, category ${category}. Setting to 0.`);
+                            categoryCounts[category] = 0;
+                        }
+                    } else {
+                         console.warn(`Missing value for category "${category}" in CSV row ${i + 1} for MSOA ${msoaCode}. Setting to 0.`);
+                         categoryCounts[category] = 0;
+                    }
+                });
+
+                // Store data, including total
+                categoryCounts[TOTAL_CATEGORY_KEY] = totalCount;
+                msoaData.set(msoaCode, { ...categoryCounts, msoaName: msoaName }); // Store category counts and name
+            }
+        }
+
+        // Merges CSV data into the properties of features already in the Data Layer
+        function mergeCsvDataIntoDataLayerFeatures(dataLayer, msoaDataMap, geojsonKey) {
+            dataLayer.forEach(feature => {
+                // Get the MSOA code from the feature's original properties (from GeoJSON)
+                const msoaCode = feature.getProperty(geojsonKey);
+
+                if (msoaCode) {
+                    if (msoaDataMap.has(msoaCode)) {
+                        // Get the data object from the map
+                        const data = msoaDataMap.get(msoaCode);
+                        // Set the entire data object as a new property on the Google Maps Feature
+                        feature.setProperty('csvData', data);
+                        // Also set the MSOA name directly for easier access in the info window
+                        feature.setProperty('msoaName', data.msoaName);
+                    } else {
+                        // If MSOA code from GeoJSON is not in CSV, set csvData to null
+                        feature.setProperty('csvData', null); // Indicate no data
+                        console.warn(`MSOA code ${msoaCode} from GeoJSON not found in CSV data.`);
+                    }
+                } else {
+                     // Handle features in GeoJSON that might not have the MSOA code property
+                     feature.setProperty('csvData', null);
+                     console.warn(`Feature in GeoJSON missing property key: ${geojsonKey}`);
+                }
+            });
+        }
+
+
+        // Populates the category dropdown menu
+        function populateCategoryDropdown() {
+            const selectElement = document.getElementById('category-select');
+            // Clear existing options
+            selectElement.innerHTML = '';
+
+            // Add the "Total Observations" option first
+            let totalOption = document.createElement('option');
+            totalOption.value = TOTAL_CATEGORY_KEY;
+            totalOption.textContent = TOTAL_CATEGORY_KEY;
+            selectElement.appendChild(totalOption);
+
+            // Add individual category options
+            categories.forEach(category => {
+                let option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                selectElement.appendChild(option);
+            });
+        }
+
+        // Styles the map features based on the selected category using a log scale
+        function styleMapByCategory(selectedCategory) {
+            let minLogValue = Infinity;
+            let maxLogValue = -Infinity;
+            const zeroColor = '#d3d3d3'; // Light grey for zero values
+            const noDataColor = '#808080'; // Grey for no data
+            const singleValueColor = 'rgb(128, 0, 128)'; // Purple for cases with only one positive value
+
+            // First pass: Determine the range of log-transformed values for the selected category (excluding zero)
+            dataLayer.forEach(feature => {
+                const data = feature.getProperty('csvData');
+                if (data && data[selectedCategory] !== undefined) {
+                    const value = data[selectedCategory];
+                    if (value > 0) {
+                        const logValue = Math.log10(value);
+                        minLogValue = Math.min(minLogValue, logValue);
+                        maxLogValue = Math.max(maxLogValue, logValue);
+                    }
+                }
+            });
+
+            console.log(`Log value range for coloring (${selectedCategory}): Min=${minLogValue}, Max=${maxLogValue}`);
+
+            // Set the styling function for the data layer
+            dataLayer.setStyle(feature => {
+                const data = feature.getProperty('csvData');
+                let color = noDataColor; // Default color for no data
+                let opacity = 0.3; // Lower opacity for no data
+
+                if (data && data[selectedCategory] !== undefined) {
+                    const value = data[selectedCategory];
+
+                    if (value === 0) {
+                        color = zeroColor; // Use specific color for zero
+                        opacity = 0.7;
+                    } else if (value > 0) {
+                        // Handle positive values
+                        if (maxLogValue > minLogValue) {
+                            // Apply log scale and normalize for positive values
+                            const logValue = Math.log10(value);
+                            const normalizedLogValue = (logValue - minLogValue) / (maxLogValue - minLogValue);
+
+                            // Map the normalized log-transformed value to an RGB color (Blue to Red)
+                            // Blue: (0, 0, 255) -> normalizedLogValue = 0
+                            // Red: (255, 0, 0) -> normalizedLogValue = 1
+                            const red = Math.round(normalizedLogValue * 255);
+                            const blue = Math.round((1 - normalizedLogValue) * 255);
+                            const green = 0; // Keep green at 0 for a simple blue-to-red gradient
+
+                            color = `rgb(${red}, ${green}, ${blue})`;
+                            opacity = 0.7;
+
+                        } else { // maxLogValue === minLogValue (all positive values are the same)
+                             color = singleValueColor; // Use a distinct color like purple
+                             opacity = 0.7;
+                        }
+                    }
+                    // If value is negative or NaN, it will fall into the noDataColor case
+                }
+
+
+                return {
+                    fillColor: color,
+                    fillOpacity: opacity,
+                    strokeColor: '#FFFFFF', // White border
+                    strokeWeight: 0.5 // Thin border
+                };
+            });
+        }
+
+
+    </script>
+
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDtiYH_aoxtaM7CqD2YSiHsZAWTRkfjKuk&callback=initMap">
+    </script>
+
+</body>
+</html>
